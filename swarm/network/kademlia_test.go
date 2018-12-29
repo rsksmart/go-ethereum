@@ -160,6 +160,14 @@ func TestNeighbourhoodDepth(t *testing.T) {
 		t.Fatalf("%d expected depth 3, was %d", testNum, depth)
 	}
 	testNum++
+
+	kad.Off(peers[0])
+	log.Debug(kad.String())
+	depth = kad.NeighbourhoodDepth()
+	if depth != 3 {
+		t.Fatalf("%d expected depth 3, was %d", testNum, depth)
+	}
+	testNum++
 }
 
 // TestHealthStrict tests the simplest definition of health
