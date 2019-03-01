@@ -118,9 +118,11 @@ func initTestVariables(sim *simulation.Simulation, msgCount int) {
 		nodeAddrs[nodeId] = nodeIDToAddr(nodeId)
 	}
 
+	msgs = [][]byte{}
+
 	for i := 0; i < int(msgCount); i++ {
 		msgAddr := pot.RandomAddress() // we choose message addresses randomly
-
+		msgAddr[0] = 0x24
 		msgs = append(msgs, msgAddr.Bytes())
 		smallestPo := 256
 

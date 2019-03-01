@@ -464,6 +464,7 @@ func (p *Pss) process(pssmsg *PssMsg, raw bool, prox bool) error {
 	}
 
 	if len(pssmsg.To) < addressLength || prox {
+		log.Trace("pss msg forwarding (process) ===>", "pss", common.ToHex(p.BaseAddr()), "prox", prox)
 		err = p.enqueue(pssmsg)
 	}
 	p.executeHandlers(psstopic, payload, from, raw, prox, asymmetric, keyid)
@@ -519,7 +520,7 @@ func (p *Pss) isSelfPossibleRecipient(msg *PssMsg, prox bool) bool {
 
 	depth := p.Kademlia.NeighbourhoodDepth()
 	po, _ := network.Pof(p.Kademlia.BaseAddr(), msg.To, 0)
-	log.Trace("selfpossible", "po", po, "depth", depth)
+	log.Trace("selfpossible", "po", po, "depth", depth, "pss", label(p.BaseAddr()))
 
 	return depth <= po
 }
@@ -695,6 +696,7 @@ func sendMsg(p *Pss, sp *network.Peer, msg *PssMsg) bool {
 	pp := p.fwdPool[sp.Info().ID]
 	p.fwdPoolMu.RUnlock()
 
+	log.Trace("forwarding sendmsg", "from", label(p.BaseAddr()), "to", label(sp.UAddr))
 	err := pp.Send(context.TODO(), msg)
 	if err != nil {
 		metrics.GetOrRegisterCounter("pss.pp.send.error", nil).Inc(1)
