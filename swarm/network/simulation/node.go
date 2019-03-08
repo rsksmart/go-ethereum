@@ -224,7 +224,6 @@ func (s *Simulation) UploadSnapshot(snapshotFile string, opts ...AddNodeOption) 
 	//(we need this to wait for messages before uploading)
 	for i := range snap.Nodes {
 		snap.Nodes[i].Node.Config.EnableMsgEvents = true
-		snap.Nodes[i].Node.Config.Services = s.serviceNames
 		for _, o := range opts {
 			o(snap.Nodes[i].Node.Config)
 		}
