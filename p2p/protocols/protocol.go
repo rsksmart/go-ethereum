@@ -377,56 +377,6 @@ func (p *Peer) handleIncoming(handle func(ctx context.Context, msg interface{}) 
 	return nil
 }
 
-// Handshake negotiates a handshake on the peer connection
-// * arguments
-//   * context
-//   * the local handshake to be sent to the remote peer
-//   * function to be called on the remote handshake (can be nil)
-// * expects a remote handshake back of the same type
-// * the dialing peer needs to send the handshake first and then waits for remote
-// * the listening peer waits for the remote handshake and then sends it
-// returns the remote handshake and an error
-func (p *Peer) Handshake(ctx context.Context, hs interface{}, verify func(interface{}) error) (interface{}, error) {
-	if _, ok := p.spec.GetCode(hs); !ok {
-		return nil, errorf(ErrHandshake, "unknown handshake message type: %T", hs)
-	}
-
-	var rhs interface{}
-	errc := make(chan error, 2)
-	handle := func(ctx context.Context, msg interface{}) error {
-		rhs = msg
-		if verify != nil {
-			return verify(rhs)
-		}
-		return nil
-	}
-	send := func() { errc <- p.Send(ctx, hs) }
-	receive := func() { errc <- p.handleIncoming(handle) }
-
-	go func() {
-		if p.Inbound() {
-			receive()
-			send()
-		} else {
-			send()
-			receive()
-		}
-	}()
-
-	for i := 0; i < 2; i++ {
-		var err error
-		select {
-		case err = <-errc:
-		case <-ctx.Done():
-			err = ctx.Err()
-		}
-		if err != nil {
-			return nil, errorf(ErrHandshake, err.Error())
-		}
-	}
-	return rhs, nil
-}
-
 // HasCap returns true if Peer has a capability
 // with provided name.
 func (p *Peer) HasCap(capName string) (yes bool) {
