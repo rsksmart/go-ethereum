@@ -9,7 +9,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p/simulations/adapters"
-	"github.com/ethereum/go-ethereum/swarm/log"
 	"github.com/ethereum/go-ethereum/swarm/network"
 	"github.com/ethereum/go-ethereum/swarm/network/simulation"
 )
@@ -25,7 +24,6 @@ func TestENR(t *testing.T) {
 				UnderlayAddr: addr.Under(),
 				HiveParams:   hp,
 			}
-			log.Warn("addr", "config", config)
 			kad := network.NewKademlia(addr.Over(), network.NewKadParams())
 			// store kademlia in node's bucket under BucketKeyKademlia
 			// so that it can be found by WaitTillHealthy method.

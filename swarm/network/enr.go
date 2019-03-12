@@ -66,7 +66,6 @@ func getENRBzzPeer(p *p2p.Peer, rw p2p.MsgReadWriter, spec *protocols.Spec) *Bzz
 
 	// retrieve the ENR Record data
 	record := p.Node().Record()
-	log.Warn("record", "r", record)
 	record.Load(&lightnode)
 	//record.Load(&bootnode)
 
