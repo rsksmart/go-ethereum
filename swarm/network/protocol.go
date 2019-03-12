@@ -385,5 +385,6 @@ func RandomAddr() *BzzAddr {
 
 // NewAddr constucts a BzzAddr from a node record.
 func NewAddr(node *enode.Node) *BzzAddr {
-	return &BzzAddr{OAddr: node.ID().Bytes(), UAddr: []byte(node.String())}
+	//return &BzzAddr{OAddr: node.ID().Bytes(), UAddr: []byte(node.String())}
+	return getENRBzzAddr(node)
 }

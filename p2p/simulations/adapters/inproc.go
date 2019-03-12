@@ -87,6 +87,16 @@ func (s *SimAdapter) NewNode(config *NodeConfig) (Node, error) {
 		}
 	}
 
+	err := enode.SignV4(&config.Record, config.PrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("unable to generate ENR: %v", err)
+	}
+	nod, err := enode.New(enode.V4ID{}, &config.Record)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create enode: %v", err)
+	}
+	config.node = nod
+
 	n, err := node.New(&node.Config{
 		P2P: p2p.Config{
 			PrivateKey:      config.PrivateKey,
