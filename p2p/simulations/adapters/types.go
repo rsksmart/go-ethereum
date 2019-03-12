@@ -191,7 +191,7 @@ func RandomNodeConfig() *NodeConfig {
 		panic("unable to assign tcp port")
 	}
 
-	enodId := enode.NewV4(&prvkey.PublicKey, net.IP{127, 0, 0, 1}, int(port), int(port)).ID()
+	enodId := enode.PubkeyToIDV4(&prvkey.PublicKey)
 	return &NodeConfig{
 		PrivateKey:      prvkey,
 		ID:              enodId,

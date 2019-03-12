@@ -21,11 +21,13 @@ import (
 	"errors"
 	"io/ioutil"
 	"math/rand"
+	"net"
 	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/simulations"
 	"github.com/ethereum/go-ethereum/p2p/simulations/adapters"
 	bzzapi "github.com/ethereum/go-ethereum/swarm/api"
@@ -113,6 +115,13 @@ func (s *Simulation) AddNode(opts ...AddNodeOption) (id enode.ID, err error) {
 	conf.Record.Set(bzzAddr)
 	conf.Record.Set(&lightnode)
 	conf.Record.Set(&bootnode)
+
+	// dialer in simulations based on ENR records
+	// doesn't work unless we explicitly set localhost record
+	ip := enr.IP(net.IPv4(127, 0, 0, 1))
+	conf.Record.Set(&ip)
+	tcpPort := enr.TCP(0)
+	conf.Record.Set(&tcpPort)
 
 	// Add the bzz address to the node config
 	node, err := s.Net.NewNodeWithConfig(conf)
