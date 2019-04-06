@@ -39,8 +39,8 @@ type (
 )
 
 type NetFetcher interface {
-	Request(hopCount uint8)
-	Offer(source *enode.ID)
+	Request(ctx context.Context, hopCount uint8)
+	Offer(ctx context.Context, source *enode.ID)
 }
 
 // NetStore is an extension of local storage
@@ -210,7 +210,7 @@ func (n *NetStore) getOrCreateFetcher(ctx context.Context, ref Address) *fetcher
 	// no fetcher for the given address, we have to create a new one
 	key := hex.EncodeToString(ref)
 	// create the context during which fetching is kept alive
-	cctx, cancel := context.WithTimeout(ctx, fetcherTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), fetcherTimeout)
 	// destroy is called when all requests finish
 	destroy := func() {
 		// remove fetcher from fetchers
@@ -225,7 +225,7 @@ func (n *NetStore) getOrCreateFetcher(ctx context.Context, ref Address) *fetcher
 	peers := &sync.Map{}
 
 	cctx, sp := spancontext.StartSpan(
-		cctx,
+		ctx,
 		"netstore.fetcher",
 	)
 
@@ -321,9 +321,9 @@ func (f *fetcher) Fetch(rctx context.Context) (Chunk, error) {
 		if err := source.UnmarshalText([]byte(sourceIF.(string))); err != nil {
 			return nil, err
 		}
-		f.netFetcher.Offer(&source)
+		f.netFetcher.Offer(rctx, &source)
 	} else {
-		f.netFetcher.Request(hopCount)
+		f.netFetcher.Request(rctx, hopCount)
 	}
 
 	// wait until either the chunk is delivered or the context is done
