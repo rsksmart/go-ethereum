@@ -133,7 +133,7 @@ func NewFetcher(ctx context.Context, addr storage.Address, rf RequestFunc, skipC
 }
 
 // Offer is called when an upstream peer offers the chunk via syncing as part of `OfferedHashesMsg` and the node does not have the chunk locally.
-func (f *Fetcher) Offer(source *enode.ID) {
+func (f *Fetcher) Offer(ctx context.Context, source *enode.ID) {
 	// First we need to have this select to make sure that we return if context is done
 	select {
 	case <-f.ctx.Done():
@@ -150,7 +150,7 @@ func (f *Fetcher) Offer(source *enode.ID) {
 }
 
 // Request is called when an upstream peer request the chunk as part of `RetrieveRequestMsg`, or from a local request through FileStore, and the node does not have the chunk locally.
-func (f *Fetcher) Request(hopCount uint8) {
+func (f *Fetcher) Request(ctx context.Context, hopCount uint8) {
 	// First we need to have this select to make sure that we return if context is done
 	select {
 	case <-f.ctx.Done():
