@@ -112,7 +112,7 @@ var retrievalSimServiceMap = map[string]simulation.ServiceFunc{
 			return nil, nil, err
 		}
 
-		syncUpdateDelay := 1 * time.Second
+		syncUpdateDelay := 2 * time.Second
 		if *longrunning {
 			syncUpdateDelay = 3 * time.Second
 		}
