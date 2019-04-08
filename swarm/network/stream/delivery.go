@@ -277,46 +277,54 @@ func (d *Delivery) RequestFromPeers(ctx context.Context, req *network.Request) (
 	var err error
 	spID := req.Source
 
-	depth := d.kad.NeighbourhoodDepth()
-
-	d.kad.EachConn(req.Addr[:], 255, func(p *network.Peer, po int) bool {
-		id := p.ID()
-		if p.LightNode {
-			// skip light nodes
-			return true
+	if spID != nil {
+		sp = d.getPeer(*spID)
+		if sp == nil {
+			return nil, nil, fmt.Errorf("source peer %v not found", spID.String())
 		}
-		if req.SkipPeer(id.String()) {
-			rid := getGID()
-			log.Trace("Delivery.RequestFromPeers: skip peer", "peer", id, "ref", req.Addr.String(), "rid", rid)
-			return true
-		}
+	} else {
 
+		depth := d.kad.NeighbourhoodDepth()
 		// if origin is farther away from req.Addr and origin is not in our depth
 		prox := chunk.Proximity(req.Addr, d.kad.BaseAddr())
-		// proximity between the req.Addr and our base addr
-		if po < depth && prox >= depth {
-			log.Trace("Delivery.RequestFromPeers: skip peer because depth", "po", po, "depth", depth, "peer", id, "ref", req.Addr.String(), "rid", rid)
 
-			err = fmt.Errorf("not going outside of depth; ref=%s po=%v depth=%v prox=%v", req.Addr.String(), po, depth, prox)
+		d.kad.EachConn(req.Addr[:], 255, func(p *network.Peer, po int) bool {
+			id := p.ID()
+			if p.LightNode {
+				// skip light nodes
+				return true
+			}
+			if req.SkipPeer(id.String()) {
+				rid = getGID()
+				log.Trace("Delivery.RequestFromPeers: skip peer", "peer", id, "ref", req.Addr.String(), "rid", rid)
+				return true
+			}
+
+			// proximity between the req.Addr and our base addr
+			if po < depth && prox >= depth {
+				log.Trace("Delivery.RequestFromPeers: skip peer because depth", "po", po, "depth", depth, "peer", id, "ref", req.Addr.String(), "rid", rid)
+
+				err = fmt.Errorf("not going outside of depth; ref=%s po=%v depth=%v prox=%v", req.Addr.String(), po, depth, prox)
+				return false
+			}
+
+			sp = d.getPeer(id)
+			// sp is nil, when we encounter a peer that is not registered for delivery, i.e. doesn't support the `stream` protocol
+			if sp == nil {
+				return true
+			}
+			spID = &id
 			return false
+		})
+
+		if err != nil {
+			log.Error(err.Error())
+			return nil, nil, err
 		}
 
-		sp = d.getPeer(id)
-		// sp is nil, when we encounter a peer that is not registered for delivery, i.e. doesn't support the `stream` protocol
 		if sp == nil {
-			return true
+			return nil, nil, errors.New("no peer found")
 		}
-		spID = &id
-		return false
-	})
-
-	if err != nil {
-		log.Error(err.Error())
-		return nil, nil, err
-	}
-
-	if sp == nil {
-		return nil, nil, errors.New("no peer found")
 	}
 
 	// setting this value in the context creates a new span that can persist across the sendpriority queue and the network roundtrip
