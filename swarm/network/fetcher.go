@@ -48,14 +48,18 @@ type RequestFunc func(context.Context, *Request) (*enode.ID, chan struct{}, erro
 //     2. or because the requester cancelled/timed out
 // Fetcher self destroys itself after it is completed.
 // TODO: cancel all forward requests after termination
+type requestItem struct {
+	ctx      context.Context
+	hopCount uint8
+}
+
 type Fetcher struct {
-	protoRequestFunc RequestFunc     // request function fetcher calls to issue retrieve request for a chunk
-	addr             storage.Address // the address of the chunk to be fetched
-	offerC           chan *enode.ID  // channel of sources (peer node id strings)
-	requestC         chan uint8      // channel for incoming requests (with the hopCount value in it)
+	protoRequestFunc RequestFunc      // request function fetcher calls to issue retrieve request for a chunk
+	addr             storage.Address  // the address of the chunk to be fetched
+	offerC           chan *enode.ID   // channel of sources (peer node id strings)
+	requestC         chan requestItem // channel for incoming requests (with the hopCount value in it)
 	searchTimeout    time.Duration
 	skipCheck        bool
-	ctx              context.Context
 }
 
 type Request struct {
@@ -113,22 +117,21 @@ func NewFetcherFactory(request RequestFunc, skipCheck bool) *FetcherFactory {
 // contain the peers which are actively requesting this chunk, to make sure we
 // don't request back the chunks from them.
 // The created Fetcher is started and returned.
-func (f *FetcherFactory) New(ctx context.Context, source storage.Address, peers *sync.Map) storage.NetFetcher {
-	fetcher := NewFetcher(ctx, source, f.request, f.skipCheck)
-	go fetcher.run(peers)
+func (f *FetcherFactory) New(ctx context.Context, source storage.Address, peersToSkip *sync.Map) storage.NetFetcher {
+	fetcher := NewFetcher(source, f.request, f.skipCheck)
+	go fetcher.run(ctx, peersToSkip)
 	return fetcher
 }
 
 // NewFetcher creates a new Fetcher for the given chunk address using the given request function.
-func NewFetcher(ctx context.Context, addr storage.Address, rf RequestFunc, skipCheck bool) *Fetcher {
+func NewFetcher(addr storage.Address, rf RequestFunc, skipCheck bool) *Fetcher {
 	return &Fetcher{
 		addr:             addr,
 		protoRequestFunc: rf,
 		offerC:           make(chan *enode.ID),
-		requestC:         make(chan uint8),
+		requestC:         make(chan requestItem),
 		searchTimeout:    defaultSearchTimeout,
 		skipCheck:        skipCheck,
-		ctx:              ctx,
 	}
 }
 
@@ -136,7 +139,7 @@ func NewFetcher(ctx context.Context, addr storage.Address, rf RequestFunc, skipC
 func (f *Fetcher) Offer(ctx context.Context, source *enode.ID) {
 	// First we need to have this select to make sure that we return if context is done
 	select {
-	case <-f.ctx.Done():
+	case <-ctx.Done():
 		return
 	default:
 	}
@@ -145,7 +148,7 @@ func (f *Fetcher) Offer(ctx context.Context, source *enode.ID) {
 	// push to offerC instead if offerC is available (see number 2 in https://golang.org/ref/spec#Select_statements)
 	select {
 	case f.offerC <- source:
-	case <-f.ctx.Done():
+	case <-ctx.Done():
 	}
 }
 
@@ -153,7 +156,7 @@ func (f *Fetcher) Offer(ctx context.Context, source *enode.ID) {
 func (f *Fetcher) Request(ctx context.Context, hopCount uint8) {
 	// First we need to have this select to make sure that we return if context is done
 	select {
-	case <-f.ctx.Done():
+	case <-ctx.Done():
 		return
 	default:
 	}
@@ -166,22 +169,26 @@ func (f *Fetcher) Request(ctx context.Context, hopCount uint8) {
 	// This select alone would not guarantee that we return of context is done, it could potentially
 	// push to offerC instead if offerC is available (see number 2 in https://golang.org/ref/spec#Select_statements)
 	select {
-	case f.requestC <- hopCount + 1:
-	case <-f.ctx.Done():
+	case f.requestC <- requestItem{ctx: ctx, hopCount: hopCount + 1}:
+	case <-ctx.Done():
 	}
 }
 
 // start prepares the Fetcher
 // it keeps the Fetcher alive within the lifecycle of the passed context
-func (f *Fetcher) run(peers *sync.Map) {
+func (f *Fetcher) run(ctx context.Context, peers *sync.Map) {
 	var (
 		doRequest bool             // determines if retrieval is initiated in the current iteration
 		wait      *time.Timer      // timer for search timeout
 		waitC     <-chan time.Time // timer channel
 		sources   []*enode.ID      // known sources, ie. peers that offered the chunk
 		requested bool             // true if the chunk was actually requested
-		hopCount  uint8
+		item      requestItem
 	)
+
+	// make sure item.ctx is initialised when we get an offer
+	item.ctx = context.TODO()
+
 	gone := make(chan *enode.ID) // channel to signal that a peer we requested from disconnected
 
 	// loop that keeps the fetching process alive
@@ -203,7 +210,7 @@ func (f *Fetcher) run(peers *sync.Map) {
 			doRequest = requested
 
 		// incoming request
-		case hopCount = <-f.requestC:
+		case item = <-f.requestC:
 			// 2) chunk is requested, set requested flag
 			// launch a request iff none been launched yet
 			doRequest = !requested
@@ -224,7 +231,7 @@ func (f *Fetcher) run(peers *sync.Map) {
 			log.Trace("search timed out: requesting", "request addr", f.addr, "doRequest", doRequest)
 
 			// all Fetcher context closed, can quit
-		case <-f.ctx.Done():
+		case <-ctx.Done():
 			log.Trace("terminate fetcher", "request addr", f.addr)
 			// TODO: send cancellations to all peers left over in peers map (i.e., those we requested from)
 			return
@@ -233,7 +240,7 @@ func (f *Fetcher) run(peers *sync.Map) {
 		// need to issue a new request
 		if doRequest {
 			var err error
-			sources, err = f.doRequest(gone, peers, sources, hopCount)
+			sources, err = f.doRequest(item.ctx, gone, peers, sources, item.hopCount)
 			if err != nil {
 				log.Info("unable to request", "request addr", f.addr, "err", err)
 			}
@@ -271,7 +278,7 @@ func (f *Fetcher) run(peers *sync.Map) {
 // * the peer's address is added to the set of peers to skip
 // * the peer's address is removed from prospective sources, and
 // * a go routine is started that reports on the gone channel if the peer is disconnected (or terminated their streamer)
-func (f *Fetcher) doRequest(gone chan *enode.ID, peersToSkip *sync.Map, sources []*enode.ID, hopCount uint8) ([]*enode.ID, error) {
+func (f *Fetcher) doRequest(ctx context.Context, gone chan *enode.ID, peersToSkip *sync.Map, sources []*enode.ID, hopCount uint8) ([]*enode.ID, error) {
 	var i int
 	var sourceID *enode.ID
 	var quit chan struct{}
@@ -289,7 +296,7 @@ func (f *Fetcher) doRequest(gone chan *enode.ID, peersToSkip *sync.Map, sources 
 		req.Source = sources[i]
 		var err error
 		log.Trace("fetcher.doRequest", "request addr", f.addr, "peer", req.Source.String())
-		sourceID, quit, err = f.protoRequestFunc(f.ctx, req)
+		sourceID, quit, err = f.protoRequestFunc(ctx, req)
 		if err == nil {
 			// remove the peer from known sources
 			// Note: we can modify the source although we are looping on it, because we break from the loop immediately
@@ -303,7 +310,7 @@ func (f *Fetcher) doRequest(gone chan *enode.ID, peersToSkip *sync.Map, sources 
 	if !foundSource {
 		req.Source = nil
 		var err error
-		sourceID, quit, err = f.protoRequestFunc(f.ctx, req)
+		sourceID, quit, err = f.protoRequestFunc(ctx, req)
 		if err != nil {
 			// if no peers found to request from
 			return sources, err
@@ -320,7 +327,7 @@ func (f *Fetcher) doRequest(gone chan *enode.ID, peersToSkip *sync.Map, sources 
 		select {
 		case <-quit:
 			gone <- sourceID
-		case <-f.ctx.Done():
+		case <-ctx.Done():
 		}
 
 		// finish the request span

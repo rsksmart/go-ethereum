@@ -42,7 +42,7 @@ const (
 var TestProtocolNetworkID = DefaultTestNetworkID
 
 var (
-	loglevel = flag.Int("loglevel", 2, "verbosity of logs")
+	loglevel = flag.Int("loglevel", 1, "verbosity of logs")
 )
 
 func init() {
