@@ -72,7 +72,7 @@ func (d *Delivery) handleRetrieveRequestMsg(ctx context.Context, sp *Peer, req *
 		ctx,
 		"handle.retrieve.request")
 
-	osp.LogFields(olog.String("ref", req.Addr.String()))
+	//osp.LogFields(olog.String("ref", req.Addr.String()))
 
 	defer osp.Finish()
 
@@ -248,7 +248,7 @@ func (d *Delivery) FindPeer(ctx context.Context, req *storage.Request) (*Peer, e
 		if po <= myPo && po <= originPo {
 			log.Trace("not forwarding a request in nearest neighbourhood", "originpo", originPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
 
-			err = fmt.Errorf("not forwarding a request in nearest neighbourhood; ref=%s po=%v depth=%v myPo=%v", req.Addr.String(), po, depth, myPo)
+			err = fmt.Errorf("not forwarding a request in nearest neighbourhood; ref=%s originpo=%v po=%v depth=%v myPo=%v", req.Addr.String(), originPo, po, depth, myPo)
 			return false
 		}
 
@@ -257,16 +257,16 @@ func (d *Delivery) FindPeer(ctx context.Context, req *storage.Request) (*Peer, e
 		if po < myPo && depth > po {
 			log.Trace("findpeer skip peer because origin was closer", "originpo", originPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
 
-			err = fmt.Errorf("not asking peers further away from origin; ref=%s po=%v depth=%v myPo=%v", req.Addr.String(), po, depth, myPo)
+			err = fmt.Errorf("not asking peers further away from origin; ref=%s originpo=%v po=%v depth=%v myPo=%v", req.Addr.String(), originPo, po, depth, myPo)
 			return false
 		}
 
 		// if chunk falls in our nearest neighbourhood (1st condition), but suggested peer is not in
 		// the nearest neighbourhood (2nd condition), don't forward the request to suggested peer
 		if depth <= myPo && depth > po {
-			log.Trace("findpeer skip peer because depth", "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
+			log.Trace("findpeer skip peer because depth", "originpo", originPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
 
-			err = fmt.Errorf("not going outside of depth; ref=%s po=%v depth=%v myPo=%v", req.Addr.String(), po, depth, myPo)
+			err = fmt.Errorf("not going outside of depth; ref=%s originpo=%v po=%v depth=%v myPo=%v", req.Addr.String(), originPo, po, depth, myPo)
 			return false
 		}
 
@@ -277,7 +277,9 @@ func (d *Delivery) FindPeer(ctx context.Context, req *storage.Request) (*Peer, e
 		}
 
 		// sp is nil, when we encounter a peer that is not registered for delivery, i.e. doesn't support the `stream` protocol
-		return sp == nil
+		continueIterating := (sp == nil)
+
+		return continueIterating
 	})
 
 	if osp != nil {

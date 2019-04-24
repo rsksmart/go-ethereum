@@ -223,7 +223,7 @@ func (n *NetStore) RemoteFetch(ctx context.Context, req *Request, fi *FetcherIte
 		nctx := context.WithValue(innerCtx, "remote.fetchh", osp)
 		currentPeer, err := n.RemoteGet(nctx, req, n.localID)
 		if err != nil {
-			log.Error(err.Error(), "ref", ref)
+			log.Trace(err.Error(), "ref", ref)
 			osp.LogFields(olog.String("err", err.Error()))
 			osp.Finish()
 			return err
