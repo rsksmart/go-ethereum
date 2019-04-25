@@ -236,26 +236,33 @@ func (d *Delivery) FindPeer(ctx context.Context, req *storage.Request) (*Peer, e
 			return true
 		}
 
-		// compare to MinBinSize == 2
-		if skipped >= 2 {
-			log.Trace("already skipped MinBinSize legit peers, no point continuing the search", "skipped", skipped)
-
-			err = fmt.Errorf("skipped MinBinSize legit peers, can't find chunk")
-			return false
-		}
-
 		// make sure we don't forward a request, when it is coming from our nearest neighbourhood
-		if po <= myPo && po <= originPo {
-			log.Trace("not forwarding a request in nearest neighbourhood", "originpo", originPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
+		//if po <= myPo && po <= originPo {
+		//log.Trace("not forwarding a request in nearest neighbourhood", "originpo", originPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
 
-			err = fmt.Errorf("not forwarding a request in nearest neighbourhood; ref=%s originpo=%v po=%v depth=%v myPo=%v", req.Addr.String(), originPo, po, depth, myPo)
-			return false
+		//err = fmt.Errorf("not forwarding a request in nearest neighbourhood; ref=%s originpo=%v po=%v depth=%v myPo=%v", req.Addr.String(), originPo, po, depth, myPo)
+		//return false
+		//}
+		if myPo < depth { //  chunk is NOT within the neighbourhood
+			if po <= myPo { // always choose a peer strictly closer to chunk than us
+				log.Trace("findpeer1a", "originpo", originPo, "mypo", myPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
+				return false
+			} else {
+				log.Trace("findpeer1b", "originpo", originPo, "mypo", myPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
+			}
+		} else { // chunk IS WITHIN neighbourhood
+			if po < depth { // do not select  peer outside the neighbourhood. But allows peers futher from the chunk then us
+				log.Trace("findpeer2a", "originpo", originPo, "mypo", myPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
+				return false
+			} else {
+				log.Trace("findpeer2b", "originpo", originPo, "mypo", myPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
+			}
 		}
 
 		// if selected peer is not in the depth (2nd condition; if depth <= po, then peer is in nearest neighbourhood)
 		// and they have a lower po than ours, return error
 		if po < myPo && depth > po {
-			log.Trace("findpeer skip peer because origin was closer", "originpo", originPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
+			log.Trace("findpeer4 skip peer because origin was closer", "originpo", originPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
 
 			err = fmt.Errorf("not asking peers further away from origin; ref=%s originpo=%v po=%v depth=%v myPo=%v", req.Addr.String(), originPo, po, depth, myPo)
 			return false
@@ -264,9 +271,17 @@ func (d *Delivery) FindPeer(ctx context.Context, req *storage.Request) (*Peer, e
 		// if chunk falls in our nearest neighbourhood (1st condition), but suggested peer is not in
 		// the nearest neighbourhood (2nd condition), don't forward the request to suggested peer
 		if depth <= myPo && depth > po {
-			log.Trace("findpeer skip peer because depth", "originpo", originPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
+			log.Trace("findpeer5 skip peer because depth", "originpo", originPo, "po", po, "depth", depth, "peer", id, "ref", req.Addr.String())
 
 			err = fmt.Errorf("not going outside of depth; ref=%s originpo=%v po=%v depth=%v myPo=%v", req.Addr.String(), originPo, po, depth, myPo)
+			return false
+		}
+
+		// compare to MinBinSize == 2
+		if skipped >= 2 {
+			log.Trace("findpeer6 already skipped MinBinSize legit peers, no point continuing the search", "skipped", skipped)
+
+			err = fmt.Errorf("skipped MinBinSize legit peers, can't find chunk")
 			return false
 		}
 
