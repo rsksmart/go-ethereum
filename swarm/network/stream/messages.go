@@ -321,13 +321,7 @@ func (p *Peer) handleOfferedHashesMsg(ctx context.Context, req *OfferedHashesMsg
 	if wantDelaySet {
 		metrics.GetOrRegisterResettingTimer("handleoffered.wantdelay", nil).UpdateSince(wantDelay)
 	}
-
-	err = p.Send(ctx, msg)
-	if err != nil {
-		log.Warn("Send error", "err", err)
-	}
-
-	return nil
+	return p.Send(ctx, msg)
 }
 
 // WantedHashesMsg is the protocol msg data for signaling which hashes
