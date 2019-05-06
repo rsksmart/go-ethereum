@@ -203,6 +203,21 @@ func (p *Peer) handleOfferedHashesMsg(ctx context.Context, req *OfferedHashesMsg
 		return err
 	}
 
+	// block until previous batch is done
+	select {
+	case err := <-c.next:
+		if err != nil {
+			log.Error("c.next error", "err", err)
+			return err
+		}
+	case <-c.quit:
+		log.Debug("client.handleOfferedHashesMsg() quit")
+		return nil
+	case <-ctx.Done():
+		log.Debug("client.handleOfferedHashesMsg() context done", "ctx.Err()", ctx.Err())
+		return nil
+	}
+
 	hashes := req.Hashes
 	lenHashes := len(hashes)
 	if lenHashes%HashSize != 0 {
@@ -257,6 +272,7 @@ func (p *Peer) handleOfferedHashesMsg(ctx context.Context, req *OfferedHashesMsg
 		}
 	}
 
+	// notify batch done when all chunks are retrieved
 	go func() {
 		defer cancel()
 		for i := 0; i < ctr; i++ {
@@ -275,13 +291,15 @@ func (p *Peer) handleOfferedHashesMsg(ctx context.Context, req *OfferedHashesMsg
 			}
 		}
 		select {
-		case c.next <- c.batchDone(p, req, hashes):
+		// batch is done, we push to c.next
+		case c.next <- c.AddInterval(req.From, req.To):
 		case <-c.quit:
 			log.Debug("client.handleOfferedHashesMsg() quit")
 		case <-ctx.Done():
 			log.Debug("client.handleOfferedHashesMsg() context done", "ctx.Err()", ctx.Err())
 		}
 	}()
+
 	// only send wantedKeysMsg if all missing chunks of the previous batch arrived
 	// except
 	if c.stream.Live {
@@ -298,22 +316,6 @@ func (p *Peer) handleOfferedHashesMsg(ctx context.Context, req *OfferedHashesMsg
 		Want:   want.Bytes(),
 		From:   from,
 		To:     to,
-	}
-
-	log.Trace("sending want batch", "peer", p.ID(), "stream", msg.Stream, "from", msg.From, "to", msg.To)
-	select {
-	case err := <-c.next:
-		if err != nil {
-			log.Warn("c.next error dropping peer", "err", err)
-			p.Drop()
-			return err
-		}
-	case <-c.quit:
-		log.Debug("client.handleOfferedHashesMsg() quit")
-		return nil
-	case <-ctx.Done():
-		log.Debug("client.handleOfferedHashesMsg() context done", "ctx.Err()", ctx.Err())
-		return nil
 	}
 	log.Trace("sending want batch", "peer", p.ID(), "stream", msg.Stream, "from", msg.From, "to", msg.To)
 
