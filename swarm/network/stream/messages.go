@@ -24,10 +24,9 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/swarm/log"
 	bv "github.com/ethereum/go-ethereum/swarm/network/bitvector"
+	"github.com/ethereum/go-ethereum/swarm/network/timeouts"
 	"github.com/ethereum/go-ethereum/swarm/storage"
 )
-
-var syncBatchTimeout = 30 * time.Second
 
 // Stream defines a unique stream identifier.
 type Stream struct {
@@ -220,27 +219,39 @@ func (p *Peer) handleOfferedHashesMsg(ctx context.Context, req *OfferedHashesMsg
 
 	ctr := 0
 	errC := make(chan error)
-	ctx, cancel := context.WithTimeout(ctx, syncBatchTimeout)
+	ctx, cancel := context.WithTimeout(ctx, timeouts.SyncBatchTimeout)
 
-	ctx = context.WithValue(ctx, "source", p.ID().String())
 	for i := 0; i < lenHashes; i += HashSize {
 		hash := hashes[i : i+HashSize]
 
-		if wait := c.NeedData(ctx, hash); wait != nil {
-			ctr++
-			want.Set(i/HashSize, true)
+		log.Trace("checking offered hash", "ref", fmt.Sprintf("%x", hash))
 
-			// measure how long it takes before we mark chunks for retrieval, and actually send the request
-			if !wantDelaySet {
-				wantDelaySet = true
-				wantDelay = time.Now()
+		if shouldNOTRequestAgain, wait := c.NeedData(ctx, hash); wait != nil {
+			ctr++
+
+			if !shouldNOTRequestAgain { // if !loaded
+				// set the bit, so create a request
+				want.Set(i/HashSize, true)
+				log.Trace("need data", "ref", fmt.Sprintf("%x", hash), "request", true)
+
+				// measure how long it takes before we mark chunks for retrieval, and actually send the request
+				if !wantDelaySet {
+					wantDelaySet = true
+					wantDelay = time.Now()
+				}
+			} else {
+				log.Trace("need data", "ref", fmt.Sprintf("%x", hash))
 			}
 
-			// create request and wait until the chunk data arrives and is stored
+			// wait until the chunk data arrives and is stored, no
+			// matter if we created a request or not
 			go func(w func(context.Context) error) {
+				log.Trace("waiting for", "ref", fmt.Sprintf("%x", hash))
 				select {
 				case errC <- w(ctx):
+					log.Trace("done waiting for, w(ctx) returned", "ref", fmt.Sprintf("%x", hash))
 				case <-ctx.Done():
+					log.Trace("done waiting for, context done", "ref", fmt.Sprintf("%x", hash))
 				}
 			}(wait)
 		}
@@ -252,12 +263,11 @@ func (p *Peer) handleOfferedHashesMsg(ctx context.Context, req *OfferedHashesMsg
 			select {
 			case err := <-errC:
 				if err != nil {
-					log.Debug("client.handleOfferedHashesMsg() error waiting for chunk, dropping peer", "peer", p.ID(), "err", err)
-					p.Drop()
+					log.Error("handleOfferedHashesMsg() error waiting for chunk", "peer", p.ID(), "err", err)
 					return
 				}
 			case <-ctx.Done():
-				log.Debug("client.handleOfferedHashesMsg() context done", "ctx.Err()", ctx.Err())
+				log.Debug("handleOfferedHashesMsg() context done", "ctx.Err()", ctx.Err())
 				return
 			case <-c.quit:
 				log.Debug("client.handleOfferedHashesMsg() quit")
@@ -312,9 +322,9 @@ func (p *Peer) handleOfferedHashesMsg(ctx context.Context, req *OfferedHashesMsg
 		metrics.GetOrRegisterResettingTimer("handleoffered.wantdelay", nil).UpdateSince(wantDelay)
 	}
 
-	err = p.SendPriority(ctx, msg, c.priority)
+	err = p.Send(ctx, msg)
 	if err != nil {
-		log.Warn("SendPriority error", "err", err)
+		log.Warn("Send error", "err", err)
 	}
 
 	return nil
@@ -370,7 +380,7 @@ func (p *Peer) handleWantedHashesMsg(ctx context.Context, req *WantedHashesMsg) 
 			}
 			chunk := storage.NewChunk(hash, data)
 			syncing := true
-			if err := p.Deliver(ctx, chunk, s.priority, syncing); err != nil {
+			if err := p.Deliver(ctx, chunk, syncing); err != nil {
 				return err
 			}
 		}
