@@ -384,6 +384,8 @@ func (p *Peer) removeClient(s Stream) error {
 }
 
 func (p *Peer) setClientParams(s Stream, params *clientParams) error {
+	log.Debug("setting client params", "peer", p.ID(), "stream", s.String(), "params.priority", params.priority, "params.to", params.to)
+
 	p.clientMu.Lock()
 	defer p.clientMu.Unlock()
 
@@ -400,16 +402,20 @@ func (p *Peer) setClientParams(s Stream, params *clientParams) error {
 func (p *Peer) getClientParams(s Stream) (*clientParams, error) {
 	params := p.clientParams[s]
 	if params == nil {
+		log.Error("error getClientParams", "peer", p.ID(), "stream", s.String())
 		return nil, fmt.Errorf("client params '%v' not provided to peer %v", s, p.ID())
 	}
+	log.Debug("getting client params", "peer", p.ID(), "stream", s.String())
 	return params, nil
 }
 
 func (p *Peer) removeClientParams(s Stream) error {
 	_, ok := p.clientParams[s]
 	if !ok {
+		log.Error("error removeClientParams", "peer", p.ID(), "stream", s.String())
 		return newNotFoundError("client params", s)
 	}
+	log.Debug("removing client params", "peer", p.ID(), "stream", s.String())
 	delete(p.clientParams, s)
 	return nil
 }
