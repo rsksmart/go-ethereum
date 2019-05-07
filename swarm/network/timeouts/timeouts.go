@@ -21,4 +21,4 @@ var SyncBatchTimeout = 10 * time.Second
 
 // Within SwarmSyncerServer - If at least one chunk is added to the batch and no new chunks
 // are added in BatchTimeout period, the batch will be returned.
-var BatchTimeout = 250 * time.Millisecond
+var BatchTimeout = 2 * time.Second
