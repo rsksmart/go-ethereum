@@ -113,6 +113,7 @@ func (p *Peer) Deliver(ctx context.Context, chunk storage.Chunk, syncing bool) e
 
 // SendOfferedHashes sends OfferedHashesMsg protocol msg
 func (p *Peer) SendOfferedHashes(s *server, f, t uint64) error {
+	log.Trace("Peer.SendOfferedHashes", "peer", p.ID(), "stream", s.stream, "from", f, "to", t)
 	defer metrics.GetOrRegisterResettingTimer("send.offered.hashes", nil).UpdateSince(time.Now())
 
 	hashes, from, to, proof, err := s.setNextBatch(f, t)
@@ -137,7 +138,7 @@ func (p *Peer) SendOfferedHashes(s *server, f, t uint64) error {
 		To:            to,
 		Stream:        s.stream,
 	}
-	log.Trace("Swarm syncer offer batch", "peer", p.ID(), "stream", s.stream, "len", len(hashes), "from", from, "to", to)
+	log.Trace("Swarm syncer offer batch", "peer", p.ID(), "stream", s.stream, "len", len(hashes), "newfrom", from, "newto", to)
 	return p.Send(context.TODO(), msg)
 }
 
