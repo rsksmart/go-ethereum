@@ -22,7 +22,6 @@ package http
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -305,37 +304,13 @@ func (s *Server) HandlePostFiles(w http.ResponseWriter, r *http.Request) {
 	postFilesCount.Inc(1)
 
 	ctx, sp := spancontext.StartSpan(r.Context(), "handle.post.files")
+	defer sp.Finish()
 
 	quitChan := make(chan struct{})
 	defer close(quitChan)
 
-	// monitor the tag for this upload periodically and log to the `handle.post.files` span
-	go func(ctx context.Context, q chan struct{}, sp opentracing.Span) {
-		f := func() {
-			tagUid := sctx.GetTag(ctx)
-			tag, err := s.api.Tags.Get(tagUid)
-			if err != nil {
-				log.Warn("got an error retrieving", "tagUid", tagUid, "err", err)
-			}
-
-			sp.LogFields(olog.String("tag state", fmt.Sprintf("split=%d stored=%d seen=%d synced=%d", tag.Get(chunk.StateSplit), tag.Get(chunk.StateStored), tag.Get(chunk.StateSeen), tag.Get(chunk.StateSynced))))
-		}
-
-		for {
-			select {
-			case <-q:
-				f()
-
-				return
-			default:
-				f()
-
-				time.Sleep(2 * time.Second)
-			}
-		}
-	}(ctx, quitChan, sp)
-
-	defer sp.Finish()
+	// periodically  monitor the tag for this upload and log its state to the `handle.post.files` span
+	go periodicTagTrace(s.api.Tags, sctx.GetTag(ctx), quitChan, sp)
 
 	contentType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil {
@@ -971,4 +946,29 @@ func (lrw *loggingResponseWriter) WriteHeader(code int) {
 
 func isDecryptError(err error) bool {
 	return strings.Contains(err.Error(), api.ErrDecrypt.Error())
+}
+
+// periodicTagTrace queries the tag every 2 seconds and logs its state to the span
+func periodicTagTrace(tags *chunk.Tags, tagUid uint32, q chan struct{}, sp opentracing.Span) {
+	f := func() {
+		tag, err := tags.Get(tagUid)
+		if err != nil {
+			log.Warn("got an error getting tag", "tagUid", tagUid, "err", err)
+		}
+
+		sp.LogFields(olog.String("tag state", fmt.Sprintf("split=%d stored=%d seen=%d synced=%d", tag.Get(chunk.StateSplit), tag.Get(chunk.StateStored), tag.Get(chunk.StateSeen), tag.Get(chunk.StateSynced))))
+	}
+
+	for {
+		select {
+		case <-q:
+			f()
+
+			return
+		default:
+			f()
+
+			time.Sleep(2 * time.Second)
+		}
+	}
 }
