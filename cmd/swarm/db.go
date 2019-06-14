@@ -30,8 +30,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/swarm/chunk"
-	"github.com/ethereum/go-ethereum/swarm/storage/localstore"
+	"github.com/ethersphere/swarm/chunk"
+	"github.com/ethersphere/swarm/storage/localstore"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"gopkg.in/urfave/cli.v1"
@@ -217,7 +217,7 @@ func exportLegacy(path string, basekey []byte, out io.Writer) (int64, error) {
 		datakey := getDataKey(index.Idx, po)
 		data, err := db.Get(datakey, nil)
 		if err != nil {
-			log.Crit(fmt.Sprintf("Chunk %x found but could not be accessed: %v, %x", key, err, datakey))
+			log.Warn(fmt.Sprintf("Chunk %x found but could not be accessed: %v, %x", key, err, datakey))
 			continue
 		}
 
